@@ -13,8 +13,7 @@ int main(int argc, char* argv[])
 {
     int count = 0;
     double x, y, z, pi, t1, t2;
-    int rank, size, i, provided, recv_count;
-    MPI_Status status;
+    int rank, size, i, provided;
     
     MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
 
@@ -26,11 +25,19 @@ int main(int argc, char* argv[])
     int iter_per_proc = NUM_ITER/size;
 
     srand(SEED*rank); // Important: Multiply SEED by "rank" when you introduce MPI!
-    
-    // Calculate PI following a Monte Carlo method
 
-    for (int iter = 0; iter < iter_per_proc; iter++)
-    {
+    if (rank == 0) {
+      int counts[size - 1];
+      MPI_Request requests[size - 1];
+      int count = 0;
+    
+      for (i = 0; i < size - 1; i++) {
+        MPI_Irecv(&counts[i], 1, MPI_INT, i+1, 0, MPI_COMM_WORLD, &requests[i]);
+      }
+
+      // Calculate PI following a Monte Carlo method
+      for (int iter = 0; iter < iter_per_proc; iter++)
+      {
         // Generate random (X,Y) points
         x = (double)random() / (double)RAND_MAX;
         y = (double)random() / (double)RAND_MAX;
@@ -41,32 +48,33 @@ int main(int argc, char* argv[])
         {
             count++;
         }
-    }
-    
-    int active = 1;
-    int log_size = (int) log2(size);
+      } 
+      MPI_Waitall(size - 1, requests, MPI_STATUSES_IGNORE);
 
-    for (int k = 0; k < log_size; k++) {
-      if (active) {
-        //if bit k is set in rank
-        if ((1 << k) & rank) {
-          MPI_Send(&count, 1, MPI_INT, rank-((int) pow(2,k)), 0, MPI_COMM_WORLD);
-          active = 0;
-        }
-        else {
-          MPI_Recv(&recv_count, 1, MPI_INT, rank+((int) pow(2,k)), 0, MPI_COMM_WORLD, &status);
-          count += recv_count;
-        }
+      for (i = 0; i < size - 1; i++) {
+        count += counts[i];
       }
-    }
-    
-    if (rank == 0) {
-      // Estimate Pi and display the result
       pi = ((double)count / (double)NUM_ITER) * 4.0;
       t2 = MPI_Wtime();
       printf("The result is %f\nt = %f\n", pi, t2-t1);
     }
-    
+    else {
+      for (int iter = 0; iter < iter_per_proc; iter++)
+      {
+        // Generate random (X,Y) points
+        x = (double)random() / (double)RAND_MAX;
+        y = (double)random() / (double)RAND_MAX;
+        z = sqrt((x*x) + (y*y));
+        
+        // Check if point is in unit circle
+        if (z <= 1.0)
+        {
+          count++;
+        }
+      } 
+      MPI_Send(&count, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    }
+
     MPI_Finalize();
     return 0;
 }

@@ -11,10 +11,9 @@
 
 int main(int argc, char* argv[])
 {
-    int count = 0;
+    int count;
     double x, y, z, pi, t1, t2;
-    int rank, size, i, provided, recv_count;
-    MPI_Status status;
+    int rank, size, i, provided;
     
     MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
 
@@ -25,10 +24,13 @@ int main(int argc, char* argv[])
 
     int iter_per_proc = NUM_ITER/size;
 
+    int N = size * sizeof(int);
+
+    int *counts = malloc(N);
+
     srand(SEED*rank); // Important: Multiply SEED by "rank" when you introduce MPI!
     
     // Calculate PI following a Monte Carlo method
-
     for (int iter = 0; iter < iter_per_proc; iter++)
     {
         // Generate random (X,Y) points
@@ -43,30 +45,25 @@ int main(int argc, char* argv[])
         }
     }
     
-    int active = 1;
-    int log_size = (int) log2(size);
+    MPI_Win win;
+    MPI_Win_allocate(N, sizeof(int), MPI_INFO_NULL, MPI_COMM_WORLD, &counts, &win);
 
-    for (int k = 0; k < log_size; k++) {
-      if (active) {
-        //if bit k is set in rank
-        if ((1 << k) & rank) {
-          MPI_Send(&count, 1, MPI_INT, rank-((int) pow(2,k)), 0, MPI_COMM_WORLD);
-          active = 0;
-        }
-        else {
-          MPI_Recv(&recv_count, 1, MPI_INT, rank+((int) pow(2,k)), 0, MPI_COMM_WORLD, &status);
-          count += recv_count;
-        }
-      }
+    MPI_Win_fence(0, win);
+    {
+      MPI_Put(&count, 1, MPI_INT, 0, rank, N, MPI_INT, win);
     }
-    
+    MPI_Win_fence(0, win);
+
     if (rank == 0) {
-      // Estimate Pi and display the result
-      pi = ((double)count / (double)NUM_ITER) * 4.0;
+      for (i = 1; i < size; i++) {
+        count += counts[i];
+      }
+      pi = ((double) count / (double)NUM_ITER) * 4.0;
       t2 = MPI_Wtime();
       printf("The result is %f\nt = %f\n", pi, t2-t1);
     }
-    
+   
+    MPI_Win_free(&win);
     MPI_Finalize();
     return 0;
 }

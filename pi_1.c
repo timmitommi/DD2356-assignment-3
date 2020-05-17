@@ -27,9 +27,7 @@ int main(int argc, char* argv[])
     srand(SEED*rank); // Important: Multiply SEED by "rank" when you introduce MPI!
     
     // Calculate PI following a Monte Carlo method
-    int start_iter = rank*iter_per_proc;
-
-    for (int iter = start_iter; iter < start_iter+iter_per_proc; iter++)
+    for (int iter = 0; iter < iter_per_proc; iter++)
     {
         // Generate random (X,Y) points
         x = (double)random() / (double)RAND_MAX;
